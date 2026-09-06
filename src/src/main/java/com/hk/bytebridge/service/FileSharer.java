@@ -8,11 +8,16 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.HashMap;
 import java.util.Map;
 
 public class FileSharer {
 
     Map<Integer, String> availableFiles;
+
+    public FileSharer() {
+        availableFiles = new HashMap<>();
+    }
 
     public int offerPort(String filePath){
         int port;
