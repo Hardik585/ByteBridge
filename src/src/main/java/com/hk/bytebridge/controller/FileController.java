@@ -307,4 +307,113 @@ public class FileController {
         }
     }
 
+    private class DownloadHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange httpExchange) throws IOException {
+            Headers headers = httpExchange.getResponseHeaders();
+            headers.add("Access-Control-Allow-Origin", "*");
+
+            // 1. Handle CORS Preflight
+            if ("OPTIONS".equalsIgnoreCase(httpExchange.getRequestMethod())) {
+                headers.add("Access-Control-Allow-Methods", "GET, OPTIONS");
+                headers.add("Access-Control-Allow-Headers", "Content-Type");
+                httpExchange.sendResponseHeaders(204, -1);
+                return;
+            }
+
+            // 2. Validate HTTP Method
+            if (!"GET".equalsIgnoreCase(httpExchange.getRequestMethod())) {
+                sendTextResponse(httpExchange, 405, "Method Not Allowed");
+                return;
+            }
+
+            // 3. Parse Port Parameter (/download/8081 -> 8081)
+            String path = httpExchange.getRequestURI().getPath();
+            String portStr = path.substring(path.lastIndexOf('/') + 1);
+            int port;
+            try {
+                port = Integer.parseInt(portStr);
+            } catch (NumberFormatException ex) {
+                sendTextResponse(httpExchange, 400, "Invalid port parameter");
+                return;
+            }
+
+            // 4. Connect to P2P Target Socket & Stream Payload
+            try (Socket socket = new Socket("localhost", port);
+                 InputStream socketInput = socket.getInputStream()) {
+
+                String fileName = "download-file";
+                long fileSize = -1;
+
+                // Read TCP socket header section up to double newline (\n\n or \r\n\r\n)
+                ByteArrayOutputStream headerBaos = new ByteArrayOutputStream();
+                int b;
+                while ((b = socketInput.read()) != -1) {
+                    headerBaos.write(b);
+                    byte[] headerBytes = headerBaos.toByteArray();
+                    int len = headerBytes.length;
+
+                    // Check for double newline delimiter (\n\n or \r\n\r\n)
+                    if (len >= 2 && headerBytes[len - 1] == '\n' && headerBytes[len - 2] == '\n') {
+                        break;
+                    }
+                    if (len >= 4 && headerBytes[len - 1] == '\n' && headerBytes[len - 2] == '\r' &&
+                            headerBytes[len - 3] == '\n' && headerBytes[len - 4] == '\r') {
+                        break;
+                    }
+                }
+
+                // Parse extracted headers
+                String headerSection = headerBaos.toString(StandardCharsets.UTF_8).trim();
+                for (String line : headerSection.split("\n")) {
+                    line = line.trim();
+                    if (line.startsWith("FileName:") || line.startsWith("filename:")) {
+                        fileName = line.substring(line.indexOf(':') + 1).trim();
+                    } else if (line.startsWith("FileSize:") || line.startsWith("filesize:")) {
+                        try {
+                            fileSize = Long.parseLong(line.substring(line.indexOf(':') + 1).trim());
+                        } catch (NumberFormatException ignored) {}
+                    }
+                }
+
+                // Set browser response headers
+                headers.add("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
+                headers.add("Content-Type", "application/octet-stream");
+
+                // Use exact content length if known, or 0 for chunked transfer encoding
+                if (fileSize > 0) {
+                    httpExchange.sendResponseHeaders(200, fileSize);
+                } else {
+                    httpExchange.sendResponseHeaders(200, 0);
+                }
+
+                // Stream raw binary bytes directly to HTTP response stream
+                try (OutputStream os = httpExchange.getResponseBody()) {
+                    byte[] buffer = new byte[8192];
+                    int bytesRead;
+                    while ((bytesRead = socketInput.read(buffer)) != -1) {
+                        os.write(buffer, 0, bytesRead);
+                    }
+                    os.flush();
+                }
+
+            } catch (IOException ex) {
+                System.err.println("Error processing file download for port " + port + ": " + ex.getMessage());
+
+                if (httpExchange.getResponseCode() == -1) {
+                    headers.add("Content-Type", "application/json");
+                    sendTextResponse(httpExchange, 500, "{\"error\": \"Failed to connect to file server port " + port + "\"}");
+                }
+            }
+        }
+
+        private void sendTextResponse(HttpExchange exchange, int statusCode, String responseText) throws IOException {
+            byte[] bytes = responseText.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(statusCode, bytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(bytes);
+            }
+        }
+    }
+
 }
