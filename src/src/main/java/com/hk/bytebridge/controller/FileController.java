@@ -6,10 +6,10 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.OutputStream;
+import java.io.*;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -249,7 +249,7 @@ public class FileController {
                     fileOutputStream.write(result.fileContent);
                 }
 
-                int port = fileSharer.offerFile(filePath);
+                int port = fileSharer.offerPort(filePath);
                 // Spawn background thread to start FileServer socket listener
                 new Thread(() -> fileSharer.startFileServer(port)).start();
 
