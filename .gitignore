@@ -22,3 +22,17 @@ yarn-error.log*
 # OS specific
 .DS_Store
 Thumbs.db
+
+# Node.js
+frontend/node_modules/
+frontend/package-lock.json
+frontend/README.md
+frontend/out/
+frontend/.cache/
+frontend/bfrontendld/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
